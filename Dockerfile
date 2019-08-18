@@ -4,8 +4,6 @@ FROM php:7.3.5-fpm
 RUN groupadd -g 61000 docker \
     && useradd -g 61000 -l -m -s /bin/bash -u 61000 docker
 
-WORKDIR /app
-
 RUN apt-get update && apt-get install -y \
         libfreetype6-dev \
         libjpeg62-turbo-dev \
@@ -16,14 +14,21 @@ RUN apt-get update && apt-get install -y \
     && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
     && curl -sL https://deb.nodesource.com/setup_8.x -o nodesource_setup.sh \
     && bash nodesource_setup.sh \
-    && apt-get install -yq nodejs build-essential
+    && apt-get install -yq nodejs build-essential \
+    && apt-get autoremove -y \
+    && apt-get clean
+
+WORKDIR /app
+
+RUN chown -R docker:docker /app && chmod 755 /app
 
 # Copy files by setting ownership
-COPY --chown=docker:docker ./ ./
+COPY --chown=docker:docker . .
 
 USER docker
 
 RUN composer install \
+    && php artisan key:generate \
     && npm install \
     && npm run dev
 
