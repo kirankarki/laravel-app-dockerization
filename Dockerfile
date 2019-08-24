@@ -1,3 +1,39 @@
+#
+# PHP Dependencies
+#
+FROM composer:1.9.0 as vendor
+
+COPY database/ database/
+
+COPY composer.json composer.json
+COPY composer.lock composer.lock
+
+RUN composer install \
+    --ignore-platform-reqs \
+    --no-interaction \
+    --no-plugins \
+    --no-scripts \
+    --prefer-dist
+
+#
+# Frontend
+#
+FROM node:10.16 as frontend
+
+RUN mkdir -p /app/public
+
+COPY package.json webpack.mix.js yarn.lock /app/
+COPY resources/js /app/resources/js
+COPY resources/sass /app/resources/sass
+
+WORKDIR /app
+
+RUN yarn install && yarn production
+
+
+# 
+# Application
+#
 FROM php:7.3.5-fpm
 
 # Create non-root group & user
@@ -11,10 +47,6 @@ RUN apt-get update && apt-get install -y \
     && docker-php-ext-install -j$(nproc) iconv \
     && docker-php-ext-configure gd --with-freetype-dir=/usr/include/ --with-jpeg-dir=/usr/include/ \
     && docker-php-ext-install -j$(nproc) gd \
-    && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
-    && curl -sL https://deb.nodesource.com/setup_8.x -o nodesource_setup.sh \
-    && bash nodesource_setup.sh \
-    && apt-get install -yq nodejs build-essential \
     && apt-get autoremove -y \
     && apt-get clean
 
@@ -27,9 +59,11 @@ COPY --chown=docker:docker . .
 
 USER docker
 
-RUN composer install \
-    && php artisan key:generate \
-    && npm install \
-    && npm run dev
+COPY --from=vendor --chown=docker:docker /app/vendor/ /app/vendor/
+COPY --from=frontend --chown=docker:docker /app/public/js/ /app/public/js/
+COPY --from=frontend --chown=docker:docker /app/public/css/ /app/public/css/
+COPY --from=frontend --chown=docker:docker /app/mix-manifest.json /app/html/mix-manifest.json
+
+RUN php artisan key:generate
 
 CMD php artisan serve --host=0.0.0.0 --port=8000
